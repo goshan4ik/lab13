@@ -9,14 +9,11 @@
 
 #include <iostream>
 #include <fstream>
+#include "glUtils.h"
 using namespace glm;
 using namespace std;
 
 GLuint Program;
-GLint Attrib_vertex;
-GLint Unif_matrix;
-GLint Attrib_color;
-GLint Attrib_texture;
 
 GLuint VBO_vertex;
 GLuint VBO_color;
@@ -31,58 +28,17 @@ int mode;
 
 double angle = 0;
 
-struct vertex
-{
-	GLfloat x;
-	GLfloat y;
-	GLfloat z;
-};
-
-struct TextureVertex
-{
-    GLfloat x;
-    GLfloat y;
-};
-
-void shaderLog(unsigned int shader)
-{
-	int infologLen = 0;
-	int charsWritten = 0;
-	char* infoLog;
-	glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infologLen);
-	if (infologLen > 1)
-	{
-		infoLog = new char[infologLen];
-		if (infoLog == NULL)
-		{
-			std::cout << "ERROR: Could not allocate InfoLog buffer\n";
-			exit(1);
-		}
-		glGetShaderInfoLog(shader, infologLen, &charsWritten, infoLog);
-		std::cout << "InfoLog: " << infoLog << "\n\n\n";
-		delete[] infoLog;
-	}
-}
-
-void checkOpenGLerror()
-{
-	GLenum errCode;
-	if ((errCode = glGetError()) != GL_NO_ERROR)
-		std::cout << "OpenGl error! - " << gluErrorString(errCode);
-}
-
-void initShader()
-{
+void initShader() {
 	std::ifstream inVertex("vertexShader.vert");
 	std::string vertexShaderText((std::istreambuf_iterator<char>(inVertex)),
 		std::istreambuf_iterator<char>());
-
 	const GLchar* vsSource = vertexShaderText.c_str();
+	
 	std::ifstream inFragment("fragmentShader.frag");
 	std::string fragmentShaderText((std::istreambuf_iterator<char>(inFragment)),
 		std::istreambuf_iterator<char>());
-
 	const GLchar* fsSource = fragmentShaderText.c_str();
+
 	GLuint vShader, fShader;
 	vShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vShader, 1, &vsSource, NULL);
@@ -110,39 +66,12 @@ void initShader()
 		return;
 	}
 
-	const char* attr_name = "coord";
-	Attrib_vertex = glGetAttribLocation(Program, attr_name);
-	if (Attrib_vertex == -1)
-	{
-		std::cout << "could not bind attrib " << attr_name << std::endl;
-		return;
-	}
-
-	attr_name = "color";
-	Attrib_color = glGetAttribLocation(Program, attr_name);
-	if (Attrib_color == -1)
-	{
-		std::cout << "could not bind attrib " << attr_name << std::endl;
-		return;
-	}
-
-    attr_name = "texture";
-    Attrib_texture = glGetAttribLocation(Program, attr_name);
-    if (Attrib_texture == -1)
-    {
-        std::cout << "could not bind attrib " << attr_name << std::endl;
-        return;
-    }
-
-	attr_name = "matrix";
-	Unif_matrix = glGetUniformLocation(Program, attr_name);
-
 	checkOpenGLerror();
 }
 
 void initVBO()
 {
-	vertex vertices[] = {
+	GLfloat vertices[] = {
 	 -1.0f , -1.0f , -1.0f ,
 	 1.0f , -1.0f , -1.0f ,
 	 1.0f , 1.0f , -1.0f ,
@@ -153,7 +82,7 @@ void initVBO()
 	-1.0f , 1.0f , 1.0f
 	};
 
-	vertex colors[] = {
+	GLfloat colors[] = {
 		0.0f,  0.980f,  0.604f,
 		0.486f, 0.988f, 0.0f,
 		0.863f,  0.078f,  0.235f,
@@ -164,8 +93,7 @@ void initVBO()
 		0.502f, 0.0f, 0.502f,
 	};
 
-    TextureVertex textureVertices[] = {
-
+	GLfloat textureVertices[] = {
             0.0f, 1.0f,
             1.0f, 1.0f,
 			0.0f, 0.0f,
@@ -248,6 +176,8 @@ void render()
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glUseProgram(Program);
+
+	auto Unif_matrix = glGetUniformLocation(Program, "matrix");
 	glUniformMatrix4fv(Unif_matrix, 1, GL_FALSE, &matrix_projection[0][0]);
 	glUniform1i(glGetUniformLocation(Program, "texture1"), 0);
 
@@ -255,23 +185,26 @@ void render()
     glUniform1i(mode_unif, mode);
 
 	//setUniform(Unif_matrix, matrix_projection);
+	auto vertexAttribute = getAttributeLocation(Program, "coord");
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO_element);
-	glEnableVertexAttribArray(Attrib_vertex);
+	glEnableVertexAttribArray(vertexAttribute);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO_vertex);
-	glVertexAttribPointer(Attrib_vertex, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glVertexAttribPointer(vertexAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-	glEnableVertexAttribArray(Attrib_color);
+	auto colorAttribute = getAttributeLocation(Program, "color");
+	glEnableVertexAttribArray(colorAttribute);
 	glBindBuffer(GL_ARRAY_BUFFER, VBO_color);
-	glVertexAttribPointer(Attrib_color, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glVertexAttribPointer(colorAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
 
-    glEnableVertexAttribArray(Attrib_texture);
+	auto textureAttribute = getAttributeLocation(Program, "texture");
+    glEnableVertexAttribArray(textureAttribute);
     glBindBuffer(GL_ARRAY_BUFFER, VBO_texture);
-    glVertexAttribPointer(Attrib_texture, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    glVertexAttribPointer(textureAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
 	glDrawElements(GL_TRIANGLES, Indices_count, GL_UNSIGNED_INT, 0);
-	glDisableVertexAttribArray(Attrib_vertex);
-	glDisableVertexAttribArray(Attrib_color);
-    glDisableVertexAttribArray(Attrib_texture);
+	glDisableVertexAttribArray(vertexAttribute);
+	glDisableVertexAttribArray(colorAttribute);
+    glDisableVertexAttribArray(textureAttribute);
 	glFlush();
 	checkOpenGLerror();
 	glutSwapBuffers();
