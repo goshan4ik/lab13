@@ -1,15 +1,17 @@
 #version 330 core
-out vec4 FragColor;
 
-in vec3 ourColor;
-in vec2 TexCoord;
+in vec3 var_color;
+in vec2 var_texture;
+uniform int mode;
 
-// texture samplers
 uniform sampler2D texture1;
-uniform sampler2D texture2;
 
-void main()
-{
-	// linearly interpolate between both textures (80% container, 20% awesomeface)
-	FragColor = mix(texture(texture1, TexCoord), texture(texture2, TexCoord), 0.2);
+void main() {
+  if (mode == 1) {
+   gl_FragColor = texture(texture1, var_texture);
+  } else if (mode == 2) {
+   gl_FragColor = mix(texture(texture1, var_texture), vec4(var_color, 1.0), 0.5);
+  } else {
+   gl_FragColor = vec4(var_color, 1.0);
+  }
 }
