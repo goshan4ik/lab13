@@ -9,6 +9,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <fstream>
 #include "glUtils.h"
+#include "Model.h"
 
 using namespace glm;
 using namespace std;
@@ -16,48 +17,25 @@ using namespace std;
 int width = 0, height = 0;
 
 const double PI = 3.1415926535;
-
-vector<GLuint> shader_programs(3);
-
-int mode = 0;
 int textureMode = 0;
 
-GLuint texture1, texture2;
-GLuint VAO;
+GLuint program;
 
-GLuint vertex_buffer, uv_buffer, normal_buffer, element_buffer;
-vector<unsigned short> object_indices;
-
-glm::mat4 model_pos, view_projection;
+glm::mat4 view_projection;
 glm::mat3 normal_transform;
 float view_pos[]{ 0, 10, 20 };
-float light_angle = 0, light_pos = 20, light_radius = 30;
+float light_angle = 0, light_pos = 5, light_radius = 5;
 float light_position[]{ 0, 0, 0 };
 float m_shininess = 16;
 float spec = 1;
 
 float rotateX = 0, rotateY = 0, rotateZ = 0;
 
-mat4 matrix_projection; 
+mat4 matrix_projection;
 
-void resizeWindow(int width, int height)
-{
-	glViewport(0, 0, width, height);
-}
+vector<Model> models;
 
-string readShader(const char* path)
-{
-	string res = "";
-	ifstream file(path);
-	string line;
-	getline(file, res, '\0');
-	while (getline(file, line))
-		res += "\n " + line;
-	return res;
-}
-
-void initShaders()
-{
+void initShaders() {
 	string read_v = readShader("vertex2.shader");
 	const char* v_shader_source = read_v.c_str();
 	string read_f = readShader("fragment2.shader");
@@ -69,59 +47,21 @@ void initShaders()
 	f_shader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(f_shader, 1, &f_shader_source, NULL);
 	glCompileShader(f_shader);
-	shader_programs[0] = glCreateProgram();
-	glAttachShader(shader_programs[0], v_shader);
-	glAttachShader(shader_programs[0], f_shader);
-	glLinkProgram(shader_programs[0]);
-	glDeleteShader(v_shader);
-	glDeleteShader(f_shader);
-
-	read_v = readShader("vertex3.shader");
-	v_shader_source = read_v.c_str();
-	read_f = readShader("fragment3.shader");
-	f_shader_source = read_f.c_str();
-	v_shader, f_shader;
-	v_shader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(v_shader, 1, &v_shader_source, NULL);
-	glCompileShader(v_shader);
-	f_shader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(f_shader, 1, &f_shader_source, NULL);
-	glCompileShader(f_shader);
-	shader_programs[1] = glCreateProgram();
-	glAttachShader(shader_programs[1], v_shader);
-	glAttachShader(shader_programs[1], f_shader);
-	glLinkProgram(shader_programs[1]);
-	glDeleteShader(v_shader);
-	glDeleteShader(f_shader);
-
-	read_v = readShader("vertex1.shader");
-	v_shader_source = read_v.c_str();
-	read_f = readShader("fragment1.shader");
-	f_shader_source = read_f.c_str();
-	v_shader, f_shader;
-	v_shader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(v_shader, 1, &v_shader_source, NULL);
-	glCompileShader(v_shader);
-	f_shader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(f_shader, 1, &f_shader_source, NULL);
-	glCompileShader(f_shader);
-	shader_programs[2] = glCreateProgram();
-	glAttachShader(shader_programs[2], v_shader);
-	glAttachShader(shader_programs[2], f_shader);
-	glLinkProgram(shader_programs[2]);
+	program = glCreateProgram();
+	glAttachShader(program, v_shader);
+	glAttachShader(program, f_shader);
+	glLinkProgram(program);
 	glDeleteShader(v_shader);
 	glDeleteShader(f_shader);
 }
 
-void reshape(int w, int h)
-{
+void reshape(int w, int h) {
 	width = w;
 	height = h;
 	glViewport(0, 0, w, h);
 }
 
-void loadOBJ(const string& path, vector<glm::vec3>& out_vertices, vector<glm::vec2>& out_uvs, vector<glm::vec3>& out_normals, const double& scale)
-{
+void loadOBJ(const string& path, vector<glm::vec3>& out_vertices, vector<glm::vec2>& out_uvs, vector<glm::vec3>& out_normals, const double& scale) {
 	vector<unsigned int> vertex_indices, uv_indices, normal_indices;
 	vector<glm::vec3> temp_vertices;
 	vector<glm::vec2> temp_uvs;
@@ -129,8 +69,7 @@ void loadOBJ(const string& path, vector<glm::vec3>& out_vertices, vector<glm::ve
 
 	ifstream infile(path);
 	string line;
-	while (getline(infile, line))
-	{
+	while (getline(infile, line)){
 		stringstream ss(line);
 		string lineHeader;
 		getline(ss, lineHeader, ' ');
@@ -179,8 +118,10 @@ void loadOBJ(const string& path, vector<glm::vec3>& out_vertices, vector<glm::ve
 		out_uvs.push_back(uv);
 
 		unsigned int normalIndex = normal_indices[i];
-		glm::vec3 normal = temp_normals[normalIndex - 1];
-		out_normals.push_back(normal);
+		if (temp_normals.size() != 0) {
+			glm::vec3 normal = temp_normals[normalIndex - 1];
+			out_normals.push_back(normal);
+		}
 	}
 }
 
@@ -220,19 +161,22 @@ void indexVBO(vector<glm::vec3>& in_vertices, vector<glm::vec2>& in_uvs, vector<
 	}
 }
 
-void initBuffers()
-{
-	texture1 = SOIL_load_OGL_texture("textures/bricks.jpg", SOIL_LOAD_AUTO,
+Model loadModel(const char* modelName, const char* texture1FileName, const char* texture2FileName, const double& scale) {
+	auto texture1 = SOIL_load_OGL_texture(texture1FileName, SOIL_LOAD_AUTO,
 		SOIL_CREATE_NEW_ID,
 		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
-		
-	texture2 = SOIL_load_OGL_texture("textures/square.jpg", SOIL_LOAD_AUTO,
+	auto texture2 = SOIL_load_OGL_texture(texture2FileName, SOIL_LOAD_AUTO,
 	SOIL_CREATE_NEW_ID,
 		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
 
 	vector<glm::vec3> vertices, normals, indexed_vertices, indexed_normals;
 	vector<glm::vec2> uvs, indexed_uvs;
-	loadOBJ("african_head.obj", vertices, uvs, normals, 10);
+	loadOBJ(modelName, vertices, uvs, normals, scale);
+
+	GLuint VAO;
+
+	GLuint vertex_buffer, uv_buffer, normal_buffer, element_buffer;
+	vector<unsigned short> object_indices;
 	indexVBO(vertices, uvs, normals, object_indices, indexed_vertices, indexed_uvs, indexed_normals);
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO);
@@ -270,14 +214,25 @@ void initBuffers()
 	glEnableVertexAttribArray(2);
 
 	glBindVertexArray(0);
+
+	Model model;
+	model.texture1 = texture1;
+	model.texture2 = texture2;
+	model.VAO = VAO;
+	model.vertex_buffer = vertex_buffer;
+	model.uv_buffer = uv_buffer; 
+	model.normal_buffer = normal_buffer;
+	model.element_buffer = element_buffer;
+	model.size = object_indices.size();
+	return model;
 }
 
-void setTransform() {
+void setTransform(glm::mat4 model_pos) {
 	//вытягиваем айди атрибута из шейдеров
-	GLint s_model = glGetUniformLocation(shader_programs[mode], "transform.model");
-	GLint s_proj = glGetUniformLocation(shader_programs[mode], "transform.viewProjection");
-	GLint s_normal = glGetUniformLocation(shader_programs[mode], "transform.normal");
-	GLint s_view = glGetUniformLocation(shader_programs[mode], "transform.viewPosition");
+	GLint s_model = glGetUniformLocation(program, "transform.model");
+	GLint s_proj = glGetUniformLocation(program, "transform.viewProjection");
+	GLint s_normal = glGetUniformLocation(program, "transform.normal");
+	GLint s_view = glGetUniformLocation(program, "transform.viewPosition");
 
 	//передаем в шейдеры
 	glUniformMatrix4fv(s_model, 1, GL_FALSE, &model_pos[0][0]);
@@ -288,11 +243,11 @@ void setTransform() {
 
 void setPointLight() {
 	//вытягиваем айди атрибутов света из шейдеров
-	GLint s_position = glGetUniformLocation(shader_programs[mode], "light.position");
-	GLint s_ambient = glGetUniformLocation(shader_programs[mode], "light.ambient");
-	GLint s_diffuse = glGetUniformLocation(shader_programs[mode], "light.diffuse");
-	GLint s_specular = glGetUniformLocation(shader_programs[mode], "light.specular");
-	GLint s_attenuation = glGetUniformLocation(shader_programs[mode], "light.attenuation");
+	GLint s_position = glGetUniformLocation(program, "light.position");
+	GLint s_ambient = glGetUniformLocation(program, "light.ambient");
+	GLint s_diffuse = glGetUniformLocation(program, "light.diffuse");
+	GLint s_specular = glGetUniformLocation(program, "light.specular");
+	GLint s_attenuation = glGetUniformLocation(program, "light.attenuation");
 
 	float ambient[]{ 0.2f, 0.2f, 0.2f, 1.0f };
 	float diffuse[]{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -307,11 +262,11 @@ void setPointLight() {
 }
 
 void setMaterial(float* m_ambient, float* m_diffuse, float* m_specular, float* m_emission, float m_shiness) {
-	GLint s_ambient = glGetUniformLocation(shader_programs[mode], "material.ambient");
-	GLint s_diffuse = glGetUniformLocation(shader_programs[mode], "material.diffuse");
-	GLint s_specular = glGetUniformLocation(shader_programs[mode], "material.specular");
-	GLint s_emission = glGetUniformLocation(shader_programs[mode], "material.emission");
-	GLint s_shiness = glGetUniformLocation(shader_programs[mode], "material.shiness");
+	GLint s_ambient = glGetUniformLocation(program, "material.ambient");
+	GLint s_diffuse = glGetUniformLocation(program, "material.diffuse");
+	GLint s_specular = glGetUniformLocation(program, "material.specular");
+	GLint s_emission = glGetUniformLocation(program, "material.emission");
+	GLint s_shiness = glGetUniformLocation(program, "material.shiness");
 
 	glUniform4fv(s_ambient, 1, m_ambient);
 	glUniform4fv(s_diffuse, 1, m_diffuse);
@@ -320,37 +275,57 @@ void setMaterial(float* m_ambient, float* m_diffuse, float* m_specular, float* m
 	glUniform1f(s_shiness, m_shiness);
 }
 
-void drawObject(int cur_ind, float trans_x, float trans_y, float trans_z, float* m_ambient, float* m_diffuse, float* m_specular, float* m_emission, float m_shiness) {
+void drawObject(int cur_ind, float* m_ambient, float* m_diffuse, float* m_specular, float* m_emission, float m_shiness) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, texture1);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture2);
-	glEnable(GL_TEXTURE_2D);
+	glUseProgram(program);
+	for (auto model: models) {
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, model.texture1);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, model.texture2);
+		glEnable(GL_TEXTURE_2D);
 
-	glUseProgram(shader_programs[mode]);
-	if (mode == 0) {
-		GLint use_texture_unif = glGetUniformLocation(shader_programs[mode], "texture_mode");
-		glUniform1i(use_texture_unif, textureMode);
-		float col[] = { 1.0f, 0.0f, 0.0f };
-		GLint color_unif = glGetUniformLocation(shader_programs[mode], "col");
-		glUniform3fv(color_unif, 1, col);
-		glUniform1i(glGetUniformLocation(shader_programs[mode], "texture1"), 0);
-		glUniform1i(glGetUniformLocation(shader_programs[mode], "texture2"), 1);
-	}
-	checkOpenGLerror();
 
-	model_pos = glm::translate(model_pos, glm::vec3(trans_x, trans_y, trans_z));
-	setTransform();
-	setPointLight();
-	setMaterial(m_ambient, m_diffuse, m_specular, m_emission, m_shiness);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model.element_buffer);
 
-	glBindVertexArray(VAO);
-	glDrawElements(GL_TRIANGLES, object_indices.size(), GL_UNSIGNED_SHORT, 0);
-	glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, model.vertex_buffer);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, model.normal_buffer);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, model.uv_buffer);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(2);
+
+
+        GLint use_texture_unif = glGetUniformLocation(program, "texture_mode");
+        glUniform1i(use_texture_unif, textureMode);
+        float col[] = {1.0f, 0.0f, 0.0f};
+        GLint color_unif = glGetUniformLocation(program, "col");
+        glUniform3fv(color_unif, 1, col);
+        glUniform1i(glGetUniformLocation(program, "texture1"), 0);
+        glUniform1i(glGetUniformLocation(program, "texture2"), 1);
+        checkOpenGLerror();
+
+		glm::mat4 model_pos = glm::mat4(1.0f);
+		model_pos = glm::rotate(model_pos, glm::radians(rotateX), glm::vec3(1, 0, 0));
+		model_pos = glm::rotate(model_pos, glm::radians(rotateY), glm::vec3(0, 1, 0));
+		model_pos = glm::rotate(model_pos, glm::radians(rotateZ), glm::vec3(0, 0, 1));
+        model_pos = glm::translate(model_pos, model.translation);
+        setTransform(model_pos);
+        setPointLight();
+        setMaterial(m_ambient, m_diffuse, m_specular, m_emission, m_shiness);
+
+		glBindVertexArray(model.VAO);
+        glDrawElements(GL_TRIANGLES, model.size, GL_UNSIGNED_SHORT, 0);
+        glBindVertexArray(0);
+    }
 	glUseProgram(0);
 }
 
@@ -358,11 +333,6 @@ void drawScene()
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glLoadIdentity();
-
-	model_pos = glm::mat4(1.0f);
-	model_pos = glm::rotate(model_pos, glm::radians(rotateX), glm::vec3(1, 0, 0));
-	model_pos = glm::rotate(model_pos, glm::radians(rotateY), glm::vec3(0, 1, 0));
-	model_pos = glm::rotate(model_pos, glm::radians(rotateZ), glm::vec3(0, 0, 1));
 
 	view_projection = glm::perspective(45.0f, (float)width / (float)height, 0.1f, 100.0f);
 	view_projection *= lookAt(glm::vec3(view_pos[0], view_pos[1], view_pos[2]), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
@@ -373,10 +343,11 @@ void drawScene()
 	float m_emission[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	int cur_ind = 0;
-	drawObject(cur_ind, 0, 0, 0, m_ambient, m_diffuse, m_specular, m_emission, m_shininess);
+	drawObject(cur_ind, m_ambient, m_diffuse, m_specular, m_emission, m_shininess);
 
 	if (glIsEnabled(GL_TEXTURE_2D))
 		glDisable(GL_TEXTURE_2D);
+	glFlush();
 	glutSwapBuffers();
 }
 
@@ -389,37 +360,27 @@ void updateLight()
 
 void light_change(int key, int x, int y)
 {
-	switch (key)
-	{
-	case GLUT_KEY_F1:
-		mode = 0;
-		break;
-	case GLUT_KEY_F2:
-		mode = 1;
-		break;
-	case GLUT_KEY_F3:
-		mode = 2;
-		break;
-	case GLUT_KEY_UP:
-		light_pos += 0.5;
-		break;
-	case GLUT_KEY_DOWN:
-		light_pos -= 0.5;
-		break;
-	case GLUT_KEY_RIGHT:
-		light_angle -= 3;
-		break;
-	case GLUT_KEY_LEFT:
-		light_angle += 3;
-		break;
-	case GLUT_KEY_PAGE_UP:
-		light_radius -= 0.5;
-		break;
-	case GLUT_KEY_PAGE_DOWN:
-		light_radius += 0.5;
-		break;
-	default:
-		break;
+	switch (key) {
+		case GLUT_KEY_UP:
+			light_pos += 0.5;
+			break;
+		case GLUT_KEY_DOWN:
+			light_pos -= 0.5;
+			break;
+		case GLUT_KEY_RIGHT:
+			light_angle -= 3;
+			break;
+		case GLUT_KEY_LEFT:
+			light_angle += 3;
+			break;
+		case GLUT_KEY_PAGE_UP:
+			light_radius -= 0.5;
+			break;
+		case GLUT_KEY_PAGE_DOWN:
+			light_radius += 0.5;
+			break;
+		default:
+			break;
 	}
 	updateLight();
 	glutPostRedisplay();
@@ -461,6 +422,27 @@ void keyboard_rotate(unsigned char key, int x, int y)
 	glutPostRedisplay();
 }
 
+void loadModels() {
+	auto floor = loadModel("models/floor.obj", "textures/marble.png", "textures/bricks.jpg", 1.5);
+	floor.translation = glm::vec3(0, -3.7, 0);
+	models.push_back(floor);
+    auto teapot = loadModel("models/teapot.obj", "textures/sun.jpg", "textures/square.jpg", 3);
+    teapot.translation = glm::vec3(0, 3.4, 0);
+    models.push_back(teapot);
+    auto cube = loadModel("models/lamp.obj", "textures/square.jpg", "textures/bricks.jpg", 0.2);
+    cube.translation = glm::vec3(-5.5, 3.65f, 0);
+	models.push_back(cube);
+	auto stol = loadModel("models/stol.obj", "textures/table.png", "textures/square.jpg", 0.3);
+	stol.translation = glm::vec3(0, 0, 0);
+	models.push_back(stol);
+	auto head = loadModel("models/box.obj", "textures/box.png", "textures/bricks.jpg", 0.09);
+	head.translation = glm::vec3(12, -3.7, 0);
+	models.push_back(head);
+	auto vase = loadModel("models/vase.obj", "textures/vase.bmp", "textures/bricks.jpg", 0.15);
+	vase.translation = glm::vec3(5, 3.65f, 3);
+	models.push_back(vase);
+}
+
 int main(int argc, char** argv)
 {
 	glutInit(&argc, argv);
@@ -474,8 +456,7 @@ int main(int argc, char** argv)
 
 	glewInit();
 	initShaders();
-	initBuffers();
-
+	loadModels();
 	glClearColor(1.0, 1.0, 1.0, 1.0);
 	glEnable(GL_DEPTH_TEST);
 	updateLight();
