@@ -3,249 +3,462 @@
 #include <GL\freeglut.h>
 #include <iostream>
 #include <string>
+#include <map>
 #include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-
-#include <iostream>
 #include <fstream>
 #include "glUtils.h"
+
 using namespace glm;
 using namespace std;
 
-GLuint Program;
+int width = 0, height = 0;
 
-GLuint VBO_vertex;
-GLuint VBO_color;
-GLuint VBO_texture;
+const double PI = 3.1415926535;
 
-GLuint VBO_element;
-GLint Indices_count;
-mat4 matrix_projection;
+vector<GLuint> shader_programs(3);
 
-int texture;
-int mode;
+int mode = 0;
+int textureMode = 0;
 
-double angle = 0;
+GLuint texture1, texture2;
+GLuint VAO;
 
-void initShader() {
-	std::ifstream inVertex("vertexShader.vert");
-	std::string vertexShaderText((std::istreambuf_iterator<char>(inVertex)),
-		std::istreambuf_iterator<char>());
-	const GLchar* vsSource = vertexShaderText.c_str();
-	
-	std::ifstream inFragment("fragmentShader.frag");
-	std::string fragmentShaderText((std::istreambuf_iterator<char>(inFragment)),
-		std::istreambuf_iterator<char>());
-	const GLchar* fsSource = fragmentShaderText.c_str();
+GLuint vertex_buffer, uv_buffer, normal_buffer, element_buffer;
+vector<unsigned short> object_indices;
 
-	GLuint vShader, fShader;
-	vShader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vShader, 1, &vsSource, NULL);
-	glCompileShader(vShader);
+glm::mat4 model_pos, view_projection;
+glm::mat3 normal_transform;
+float view_pos[]{ 0, 10, 20 };
+float light_angle = 0, light_pos = 20, light_radius = 30;
+float light_position[]{ 0, 0, 0 };
+float m_shininess = 16;
+float spec = 1;
 
-	std::cout << "vertex shader \n";
-	shaderLog(vShader);
+float rotateX = 0, rotateY = 0, rotateZ = 0;
 
-	fShader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fShader, 1, &fsSource, NULL);
-	glCompileShader(fShader);
-	std::cout << "fragment shader \n";
-	shaderLog(fShader);
+mat4 matrix_projection; 
 
-	Program = glCreateProgram();
-	glAttachShader(Program, vShader);
-	glAttachShader(Program, fShader);
-	glLinkProgram(Program);
-
-	int link_ok;
-	glGetProgramiv(Program, GL_LINK_STATUS, &link_ok);
-	if (!link_ok)
-	{
-		std::cout << "error attach shaders \n";
-		return;
-	}
-
-	checkOpenGLerror();
-}
-
-void initVBO()
-{
-	GLfloat vertices[] = {
-	 -1.0f , -1.0f , -1.0f ,
-	 1.0f , -1.0f , -1.0f ,
-	 1.0f , 1.0f , -1.0f ,
-	-1.0f , 1.0f , -1.0f ,
-	-1.0f , -1.0f , 1.0f ,
-	 1.0f , -1.0f , 1.0f ,
-	 1.0f , 1.0f , 1.0f ,
-	-1.0f , 1.0f , 1.0f
-	};
-
-	GLfloat colors[] = {
-		0.0f,  0.980f,  0.604f,
-		0.486f, 0.988f, 0.0f,
-		0.863f,  0.078f,  0.235f,
-		0.545f, 0.0f, 0.0f,
-		0.957f, 0.643f, 0.376f,
-		0.753f, 0.753f, 0.753f,
-		0.184f, 0.310f, 0.310f,
-		0.502f, 0.0f, 0.502f,
-	};
-
-	GLfloat textureVertices[] = {
-            0.0f, 1.0f,
-            1.0f, 1.0f,
-			0.0f, 0.0f,
-			0.0f, 1.0f,
-			0.0f, 0.0f,
-			0.0f, 1.0f,
-			0.0f, 1.0f,
-			1.0f, 1.0f
-    };
-
-	GLint indices[] = {
-		0 , 4 , 5 ,
-		0 , 5 , 1 ,
-		1 , 5 , 6 ,
-		1 , 6 , 2 ,
-		2 , 6 , 7 ,
-		2 , 7 , 3 ,
-		3 , 7 , 4 ,
-		3 , 4 , 0 ,
-		4 , 7 , 6 ,
-		4 , 6 , 5 ,
-		3 , 0 , 1 ,
-		3 , 1 , 2
-	};
-
-	Indices_count = sizeof(indices) / sizeof(indices[0]);
-
-	//! vertex VBO
-	glGenBuffers(1, &VBO_vertex);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO_vertex);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	// Color VBO
-	glGenBuffers(1, &VBO_color);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO_color);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW);
-	//texture VBO
-    glGenBuffers(1, &VBO_texture);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO_texture);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(textureVertices), colors, GL_STATIC_DRAW);
-
-	glGenBuffers(1, &VBO_element);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO_element);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-	checkOpenGLerror();
-}
-
-void freeShader()
-{
-	glUseProgram(0);
-	glDeleteProgram(Program);
-}
-
-void freeVBO()
-{
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-	glDeleteBuffers(1, &VBO_vertex);
-	glDeleteBuffers(1, &VBO_element);
-	glDeleteBuffers(1, &VBO_color);
-    glDeleteBuffers(1, &VBO_texture);
-}
 void resizeWindow(int width, int height)
 {
 	glViewport(0, 0, width, height);
 }
 
-void render()
+string readShader(const char* path)
 {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	mat4 Projection = glm::perspective(glm::radians(45.0f), 4.0f / 3.0f, 0.1f, 100.0f);
-	mat4 View = lookAt(vec3(4, 3, 3), vec3(0, 0, 0), vec3(0, 1, 0));
-	mat4 rotate_x = { 1.0f, 0.0f, 0.0f, 0.0f,
-		0.0f, glm::cos(angle), -glm::sin(angle), 0.0f,
-		0.0f, glm::sin(angle), glm::cos(angle), 0.0f,
-		0.0f, 0.0f, 0.0f, 1.0f };
+	string res = "";
+	ifstream file(path);
+	string line;
+	getline(file, res, '\0');
+	while (getline(file, line))
+		res += "\n " + line;
+	return res;
+}
 
-	matrix_projection = Projection * View * rotate_x;
+void initShaders()
+{
+	string read_v = readShader("vertex2.shader");
+	const char* v_shader_source = read_v.c_str();
+	string read_f = readShader("fragment2.shader");
+	const char* f_shader_source = read_f.c_str();
+	GLuint v_shader, f_shader;
+	v_shader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(v_shader, 1, &v_shader_source, NULL);
+	glCompileShader(v_shader);
+	f_shader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(f_shader, 1, &f_shader_source, NULL);
+	glCompileShader(f_shader);
+	shader_programs[0] = glCreateProgram();
+	glAttachShader(shader_programs[0], v_shader);
+	glAttachShader(shader_programs[0], f_shader);
+	glLinkProgram(shader_programs[0]);
+	glDeleteShader(v_shader);
+	glDeleteShader(f_shader);
 
+	read_v = readShader("vertex3.shader");
+	v_shader_source = read_v.c_str();
+	read_f = readShader("fragment3.shader");
+	f_shader_source = read_f.c_str();
+	v_shader, f_shader;
+	v_shader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(v_shader, 1, &v_shader_source, NULL);
+	glCompileShader(v_shader);
+	f_shader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(f_shader, 1, &f_shader_source, NULL);
+	glCompileShader(f_shader);
+	shader_programs[1] = glCreateProgram();
+	glAttachShader(shader_programs[1], v_shader);
+	glAttachShader(shader_programs[1], f_shader);
+	glLinkProgram(shader_programs[1]);
+	glDeleteShader(v_shader);
+	glDeleteShader(f_shader);
+
+	read_v = readShader("vertex1.shader");
+	v_shader_source = read_v.c_str();
+	read_f = readShader("fragment1.shader");
+	f_shader_source = read_f.c_str();
+	v_shader, f_shader;
+	v_shader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(v_shader, 1, &v_shader_source, NULL);
+	glCompileShader(v_shader);
+	f_shader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(f_shader, 1, &f_shader_source, NULL);
+	glCompileShader(f_shader);
+	shader_programs[2] = glCreateProgram();
+	glAttachShader(shader_programs[2], v_shader);
+	glAttachShader(shader_programs[2], f_shader);
+	glLinkProgram(shader_programs[2]);
+	glDeleteShader(v_shader);
+	glDeleteShader(f_shader);
+}
+
+void reshape(int w, int h)
+{
+	width = w;
+	height = h;
+	glViewport(0, 0, w, h);
+}
+
+void loadOBJ(const string& path, vector<glm::vec3>& out_vertices, vector<glm::vec2>& out_uvs, vector<glm::vec3>& out_normals, const double& scale)
+{
+	vector<unsigned int> vertex_indices, uv_indices, normal_indices;
+	vector<glm::vec3> temp_vertices;
+	vector<glm::vec2> temp_uvs;
+	vector<glm::vec3> temp_normals;
+
+	ifstream infile(path);
+	string line;
+	while (getline(infile, line))
+	{
+		stringstream ss(line);
+		string lineHeader;
+		getline(ss, lineHeader, ' ');
+		if (lineHeader == "v")
+		{
+			glm::vec3 vertex;
+			ss >> vertex.x >> vertex.y >> vertex.z;
+			vertex.x *= scale;
+			vertex.y *= scale;
+			vertex.z *= scale;
+			temp_vertices.push_back(vertex);
+		}
+		else if (lineHeader == "vt")
+		{
+			glm::vec2 uv;
+			ss >> uv.x >> uv.y;
+			temp_uvs.push_back(uv);
+		}
+		else if (lineHeader == "vn")
+		{
+			glm::vec3 normal;
+			ss >> normal.x >> normal.y >> normal.z;
+			temp_normals.push_back(normal);
+		}
+		else if (lineHeader == "f")
+		{
+			unsigned int vertex_index, uv_index, normal_index;
+			char slash;
+			while (ss >> vertex_index >> slash >> uv_index >> slash >> normal_index)
+			{
+				vertex_indices.push_back(vertex_index);
+				uv_indices.push_back(uv_index);
+				normal_indices.push_back(normal_index);
+			}
+		}
+	}
+
+	for (unsigned int i = 0; i < vertex_indices.size(); i++)
+	{
+		unsigned int vertexIndex = vertex_indices[i];
+		glm::vec3 vertex = temp_vertices[vertexIndex - 1];
+		out_vertices.push_back(vertex);
+
+		unsigned int uvIndex = uv_indices[i];
+		glm::vec2 uv = temp_uvs[uvIndex - 1];
+		out_uvs.push_back(uv);
+
+		unsigned int normalIndex = normal_indices[i];
+		glm::vec3 normal = temp_normals[normalIndex - 1];
+		out_normals.push_back(normal);
+	}
+}
+
+struct PackedVertex
+{
+	glm::vec3 position;
+	glm::vec2 uv;
+	glm::vec3 normal;
+	bool operator<(const PackedVertex that) const
+	{
+		return memcmp((void*)this, (void*)&that, sizeof(PackedVertex)) > 0;
+	};
+};
+
+void indexVBO(vector<glm::vec3>& in_vertices, vector<glm::vec2>& in_uvs, vector<glm::vec3>& in_normals,
+	vector<unsigned short>& out_indices, vector<glm::vec3>& out_vertices, vector<glm::vec2>& out_uvs, vector<glm::vec3>& out_normals)
+{
+	std::map<PackedVertex, unsigned short> VertexToOutIndex;
+
+	for (unsigned int i = 0; i < in_vertices.size(); i++)
+	{
+		PackedVertex packed = { in_vertices[i], in_uvs[i], in_normals[i] };
+
+		unsigned short index;
+		auto it = VertexToOutIndex.find(packed);
+		if (it != VertexToOutIndex.end())
+			out_indices.push_back(it->second);
+		else
+		{
+			out_vertices.push_back(in_vertices[i]);
+			out_uvs.push_back(in_uvs[i]);
+			out_normals.push_back(in_normals[i]);
+			unsigned short newindex = (unsigned short)out_vertices.size() - 1;
+			out_indices.push_back(newindex);
+			VertexToOutIndex[packed] = newindex;
+		}
+	}
+}
+
+void initBuffers()
+{
+	texture1 = SOIL_load_OGL_texture("textures/bricks.jpg", SOIL_LOAD_AUTO,
+		SOIL_CREATE_NEW_ID,
+		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
+		
+	texture2 = SOIL_load_OGL_texture("textures/square.jpg", SOIL_LOAD_AUTO,
+	SOIL_CREATE_NEW_ID,
+		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
+
+	vector<glm::vec3> vertices, normals, indexed_vertices, indexed_normals;
+	vector<glm::vec2> uvs, indexed_uvs;
+	loadOBJ("african_head.obj", vertices, uvs, normals, 10);
+	indexVBO(vertices, uvs, normals, object_indices, indexed_vertices, indexed_uvs, indexed_normals);
+	glGenVertexArrays(1, &VAO);
+	glBindVertexArray(VAO);
+
+	//мы передаем вершины в буфер
+	glGenBuffers(1, &vertex_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+	glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size() * sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
+
+	//мы передаем текстурные координаты в буфер
+	glGenBuffers(1, &uv_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, uv_buffer);
+	glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size() * sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);
+
+	//мы передаем нормали в буфер
+	glGenBuffers(1, &normal_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, normal_buffer);
+	glBufferData(GL_ARRAY_BUFFER, indexed_normals.size() * sizeof(glm::vec3), &indexed_normals[0], GL_STATIC_DRAW);
+
+	//мы передаем элементы в буфер
+	glGenBuffers(1, &element_buffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, element_buffer);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, object_indices.size() * sizeof(unsigned short), &object_indices[0], GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(0);
+
+	glBindBuffer(GL_ARRAY_BUFFER, normal_buffer);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(1);
+
+	glBindBuffer(GL_ARRAY_BUFFER, uv_buffer);
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(2);
+
+	glBindVertexArray(0);
+}
+
+void setTransform() {
+	//выт€гиваем айди атрибута из шейдеров
+	GLint s_model = glGetUniformLocation(shader_programs[mode], "transform.model");
+	GLint s_proj = glGetUniformLocation(shader_programs[mode], "transform.viewProjection");
+	GLint s_normal = glGetUniformLocation(shader_programs[mode], "transform.normal");
+	GLint s_view = glGetUniformLocation(shader_programs[mode], "transform.viewPosition");
+
+	//передаем в шейдеры
+	glUniformMatrix4fv(s_model, 1, GL_FALSE, &model_pos[0][0]);
+	glUniformMatrix4fv(s_proj, 1, GL_FALSE, &view_projection[0][0]);
+	glUniformMatrix3fv(s_normal, 1, GL_FALSE, &normal_transform[0][0]);
+	glUniform3fv(s_view, 1, view_pos);
+}
+
+void setPointLight() {
+	//выт€гиваем айди атрибутов света из шейдеров
+	GLint s_position = glGetUniformLocation(shader_programs[mode], "light.position");
+	GLint s_ambient = glGetUniformLocation(shader_programs[mode], "light.ambient");
+	GLint s_diffuse = glGetUniformLocation(shader_programs[mode], "light.diffuse");
+	GLint s_specular = glGetUniformLocation(shader_programs[mode], "light.specular");
+	GLint s_attenuation = glGetUniformLocation(shader_programs[mode], "light.attenuation");
+
+	float ambient[]{ 0.2f, 0.2f, 0.2f, 1.0f };
+	float diffuse[]{ 1.0f, 1.0f, 1.0f, 1.0f };
+	float specular[]{ 1.0f, 1.0f, 1.0f, 1.0f };
+	float attenuation[]{ 1.0f, 0.0f, 0.0f };
+
+	glUniform4fv(s_position, 1, light_position);
+	glUniform4fv(s_ambient, 1, ambient);
+	glUniform4fv(s_diffuse, 1, diffuse);
+	glUniform4fv(s_specular, 1, specular);
+	glUniform3fv(s_attenuation, 1, attenuation);
+}
+
+void setMaterial(float* m_ambient, float* m_diffuse, float* m_specular, float* m_emission, float m_shiness) {
+	GLint s_ambient = glGetUniformLocation(shader_programs[mode], "material.ambient");
+	GLint s_diffuse = glGetUniformLocation(shader_programs[mode], "material.diffuse");
+	GLint s_specular = glGetUniformLocation(shader_programs[mode], "material.specular");
+	GLint s_emission = glGetUniformLocation(shader_programs[mode], "material.emission");
+	GLint s_shiness = glGetUniformLocation(shader_programs[mode], "material.shiness");
+
+	glUniform4fv(s_ambient, 1, m_ambient);
+	glUniform4fv(s_diffuse, 1, m_diffuse);
+	glUniform4fv(s_specular, 1, m_specular);
+	glUniform4fv(s_emission, 1, m_emission);
+	glUniform1f(s_shiness, m_shiness);
+}
+
+void drawObject(int cur_ind, float trans_x, float trans_y, float trans_z, float* m_ambient, float* m_diffuse, float* m_specular, float* m_emission, float m_shiness) {
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, texture1);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glUseProgram(Program);
+	glBindTexture(GL_TEXTURE_2D, texture2);
+	glEnable(GL_TEXTURE_2D);
 
-	auto Unif_matrix = glGetUniformLocation(Program, "matrix");
-	glUniformMatrix4fv(Unif_matrix, 1, GL_FALSE, &matrix_projection[0][0]);
-	glUniform1i(glGetUniformLocation(Program, "texture1"), 0);
-
-    GLint mode_unif = glGetUniformLocation(Program, "mode");
-    glUniform1i(mode_unif, mode);
-
-	//setUniform(Unif_matrix, matrix_projection);
-	auto vertexAttribute = getAttributeLocation(Program, "coord");
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO_element);
-	glEnableVertexAttribArray(vertexAttribute);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO_vertex);
-	glVertexAttribPointer(vertexAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-	auto colorAttribute = getAttributeLocation(Program, "color");
-	glEnableVertexAttribArray(colorAttribute);
-	glBindBuffer(GL_ARRAY_BUFFER, VBO_color);
-	glVertexAttribPointer(colorAttribute, 3, GL_FLOAT, GL_FALSE, 0, 0);
-
-	auto textureAttribute = getAttributeLocation(Program, "texture");
-    glEnableVertexAttribArray(textureAttribute);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO_texture);
-    glVertexAttribPointer(textureAttribute, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
-	glDrawElements(GL_TRIANGLES, Indices_count, GL_UNSIGNED_INT, 0);
-	glDisableVertexAttribArray(vertexAttribute);
-	glDisableVertexAttribArray(colorAttribute);
-    glDisableVertexAttribArray(textureAttribute);
-	glFlush();
+	glUseProgram(shader_programs[mode]);
+	if (mode == 0) {
+		GLint use_texture_unif = glGetUniformLocation(shader_programs[mode], "texture_mode");
+		glUniform1i(use_texture_unif, textureMode);
+		float col[] = { 1.0f, 0.0f, 0.0f };
+		GLint color_unif = glGetUniformLocation(shader_programs[mode], "col");
+		glUniform3fv(color_unif, 1, col);
+		glUniform1i(glGetUniformLocation(shader_programs[mode], "texture1"), 0);
+		glUniform1i(glGetUniformLocation(shader_programs[mode], "texture2"), 1);
+	}
 	checkOpenGLerror();
-	glutSwapBuffers();
+
+	model_pos = glm::translate(model_pos, glm::vec3(trans_x, trans_y, trans_z));
+	setTransform();
+	setPointLight();
+	setMaterial(m_ambient, m_diffuse, m_specular, m_emission, m_shiness);
+
+	glBindVertexArray(VAO);
+	glDrawElements(GL_TRIANGLES, object_indices.size(), GL_UNSIGNED_SHORT, 0);
+	glBindVertexArray(0);
 	glUseProgram(0);
 }
 
-void specialKeys(int key, int x, int y) {
+void drawScene()
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glLoadIdentity();
 
-	switch (key) {
-		case GLUT_KEY_PAGE_UP: angle += 5; break;
-		case GLUT_KEY_PAGE_DOWN: angle -= 5; break;
-	}
-	glutPostRedisplay();
+	model_pos = glm::mat4(1.0f);
+	model_pos = glm::rotate(model_pos, glm::radians(rotateX), glm::vec3(1, 0, 0));
+	model_pos = glm::rotate(model_pos, glm::radians(rotateY), glm::vec3(0, 1, 0));
+	model_pos = glm::rotate(model_pos, glm::radians(rotateZ), glm::vec3(0, 0, 1));
+
+	view_projection = glm::perspective(45.0f, (float)width / (float)height, 0.1f, 100.0f);
+	view_projection *= lookAt(glm::vec3(view_pos[0], view_pos[1], view_pos[2]), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+
+	float m_ambient[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float m_diffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float m_specular[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	float m_emission[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+	int cur_ind = 0;
+	drawObject(cur_ind, 0, 0, 0, m_ambient, m_diffuse, m_specular, m_emission, m_shininess);
+
+	if (glIsEnabled(GL_TEXTURE_2D))
+		glDisable(GL_TEXTURE_2D);
+	glutSwapBuffers();
 }
 
-void changeMode(unsigned char key, int x, int y)
+void updateLight()
+{
+	light_position[0] = light_radius * cos(light_angle / 180 * PI);
+	light_position[1] = light_pos;
+	light_position[2] = light_radius * sin(light_angle / 180 * PI);
+}
+
+void light_change(int key, int x, int y)
 {
 	switch (key)
 	{
-		case '1': mode = 1; break;
-		case '2': mode = 2; break;
-		default: mode = 0;
+	case GLUT_KEY_F1:
+		mode = 0;
+		break;
+	case GLUT_KEY_F2:
+		mode = 1;
+		break;
+	case GLUT_KEY_F3:
+		mode = 2;
+		break;
+	case GLUT_KEY_UP:
+		light_pos += 0.5;
+		break;
+	case GLUT_KEY_DOWN:
+		light_pos -= 0.5;
+		break;
+	case GLUT_KEY_RIGHT:
+		light_angle -= 3;
+		break;
+	case GLUT_KEY_LEFT:
+		light_angle += 3;
+		break;
+	case GLUT_KEY_PAGE_UP:
+		light_radius -= 0.5;
+		break;
+	case GLUT_KEY_PAGE_DOWN:
+		light_radius += 0.5;
+		break;
+	default:
+		break;
 	}
+	updateLight();
+	glutPostRedisplay();
 }
 
-int loadTexture(const char* textureName) {
-	auto textureId = SOIL_load_OGL_texture(textureName, SOIL_LOAD_AUTO, SOIL_CREATE_NEW_ID,
-		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT);
-	if (textureId == 0) {
-		cout << "ERROR: Texture not loader: " << textureName;
+void keyboard_rotate(unsigned char key, int x, int y)
+{
+	switch (key) {
+	case '0':
+		textureMode = 0;
+		break;
+	case '1':
+		textureMode = 1;
+		break;
+	case '2':
+		textureMode = 2;
+		break;
+	case 'w':
+		rotateX -= 2;
+		break;
+	case 's':
+		rotateX += 2;
+		break;
+	case 'q':
+		rotateY -= 2;
+		break;
+	case 'e':
+		rotateY += 2;
+		break;
+	case 'a':
+		rotateZ -= 2;
+		break;
+	case 'd':
+		rotateZ += 2;
+		break;
+	default:
+		break;
 	}
-	else {
-		cout << "Texture was successfully loaded: " << textureName;
-		glBindTexture(GL_TEXTURE_2D, texture);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	}
-	return textureId;
+	glutPostRedisplay();
 }
 
 int main(int argc, char** argv)
@@ -253,31 +466,22 @@ int main(int argc, char** argv)
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_RGBA | GLUT_ALPHA | GLUT_DOUBLE);
 	glutInitWindowSize(800, 600);
-	glutCreateWindow("Colored cube");
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(GL_LESS);
-	GLenum glew_status = glewInit();
-	if (GLEW_OK != glew_status)
-	{
-		std::cout << "Error: " << glewGetErrorString(glew_status) << "\n";
-		return 1;
-	}
-	if (!GLEW_VERSION_2_0) {
-		std::cout << "No support for OpenGL 2.0 found\n";
-		return 1;
-	}
-	glClearColor(1.0, 1.0, 1.0, 0);
 
-	texture = loadTexture("textures/bricks.jpg");
-	initVBO();
-	glEnable(GL_TEXTURE_2D);
-	initShader();
-	glutSpecialFunc(specialKeys);
-	glutKeyboardFunc(changeMode);
-	glutReshapeFunc(resizeWindow);
-	glutIdleFunc(render);
-	glutDisplayFunc(render);
+	glutInitWindowPosition(100, 100);
+	glutCreateWindow("Shaders");
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT1);
+
+	glewInit();
+	initShaders();
+	initBuffers();
+
+	glClearColor(1.0, 1.0, 1.0, 1.0);
+	glEnable(GL_DEPTH_TEST);
+	updateLight();
+	glutDisplayFunc(drawScene);
+	glutReshapeFunc(reshape);
+	glutSpecialFunc(light_change);
+	glutKeyboardFunc(keyboard_rotate);
 	glutMainLoop();
-	freeShader();
-	freeVBO();
 }
