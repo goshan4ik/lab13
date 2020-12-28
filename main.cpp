@@ -343,6 +343,7 @@ void drawScene()
 	float m_emission[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	int cur_ind = 0;
+	models[0].translation = glm::vec3(light_position[0], light_position[1], light_position[2]);
 	drawObject(cur_ind, m_ambient, m_diffuse, m_specular, m_emission, m_shininess);
 
 	if (glIsEnabled(GL_TEXTURE_2D))
@@ -423,6 +424,9 @@ void keyboard_rotate(unsigned char key, int x, int y)
 }
 
 void loadModels() {
+	auto sphere = loadModel("models/sphere.obj", "textures/sun.jpg", "textures/bricks.jpg", 0.1);
+	sphere.translation = glm::vec3(light_position[0], light_position[1], light_position[2]);
+	models.push_back(sphere);
 	auto floor = loadModel("models/floor.obj", "textures/marble.png", "textures/bricks.jpg", 1.5);
 	floor.translation = glm::vec3(0, -3.7, 0);
 	models.push_back(floor);
