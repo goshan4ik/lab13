@@ -232,7 +232,7 @@ void initBuffers()
 
 	vector<glm::vec3> vertices, normals, indexed_vertices, indexed_normals;
 	vector<glm::vec2> uvs, indexed_uvs;
-	loadOBJ("african_head.obj", vertices, uvs, normals, 10);
+	loadOBJ("cube.obj", vertices, uvs, normals, 10);
 	indexVBO(vertices, uvs, normals, object_indices, indexed_vertices, indexed_uvs, indexed_normals);
 	glGenVertexArrays(1, &VAO);
 	glBindVertexArray(VAO);
